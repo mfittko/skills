@@ -65,6 +65,19 @@ npx playwright install chromium
 
 The skill works without Telegram — it can generate `.ogg`/`.m4a` files locally using macOS `say` + `ffmpeg` as a fallback.
 
+### image-prompt
+
+| Dependency | Purpose |
+|----------|---------|
+| [ImageMagick](https://imagemagick.org) (`magick`) | Render prompt text into a PNG canvas |
+| `qrencode` | QR code rendering (novelty mode only) |
+| `zbar` (`zbarimg`) | Local QR decode / verification |
+| A vision-capable model | Reads the rendered image (e.g. `deepseek-v4-flash-vision-exp`) |
+
+```bash
+brew install imagemagick qrencode zbar
+```
+
 ### deslop
 
 No external dependencies. Works with any Pi session. The skill is self-contained — load it for any writing, editing, or review task.
@@ -98,6 +111,16 @@ Generate spoken replies and audio artifacts. Supports native Telegram voice-note
 Triggers: "audio", "voice summary", "voice note", "spoken version", "read this aloud"
 
 See [audio-note/SKILL.md](audio-note/SKILL.md) for the full workflow.
+
+### image-prompt
+
+Render a text prompt into an image (printed text, or QR as a novelty) and send it to a vision-capable model so the model reads the prompt from pixels instead of receiving it as text. Useful for obfuscation / steganographic prompt transport.
+
+Text-image mode works: 800×800 at pointsize 14 carries ~2940 chars (~735 tokens) at ~99% OCR fidelity. QR mode does not — vision models cannot decode QR from pixels and hallucinate.
+
+Triggers: "image prompt", "pixel prompt", "send prompt via image", "encode prompt as pixels"
+
+See [image-prompt/SKILL.md](image-prompt/SKILL.md) for the full workflow and empirical limits.
 
 ## Usage
 
