@@ -33,6 +33,29 @@ So ~735 tokens of content → ~435 billed = **~46% input-token saving**, and the
 image cap is flat so the ratio improves as you pack more (up to the fidelity
 ceiling). Output tokens are unaffected.
 
+### Caching caveat (the saving is mostly first-request only)
+
+DeepSeek (and most providers) cache identical prompt prefixes and bill the
+cached portion at a much lower rate (DeepSeek cacheRead ≈ 1/50th of input).
+This changes the economics:
+
+- **On a cache hit, both routes are near-free.** A cached 735-token text
+  prefix and a cached 384-token image both bill at cacheRead rates, so the
+  ~46% saving shrinks to negligible.
+- **The saving only matters on the first / uncached request** (cold start, or
+  any time the prefix changed).
+- **Images are all-or-nothing per render.** With text, editing one word near
+  the end of a 735-token prompt leaves the first ~700 tokens cached. With an
+  image, any edit regenerates the whole PNG → all 384 image tokens are a cache
+  miss.
+- **An opaque image block can defeat prefix caching for surrounding text** if
+  the prompt varies between calls, since the image must match byte-for-byte
+  to cache.
+
+Net: use this for cold, one-shot, or deliberately obfuscated prompts — not as
+a token optimization in cached multi-turn conversations, where plain text
+prefix caching is strictly better.
+
 ## Prereqs
 
 All deps are npm packages (no system tools required). Install at the repo
