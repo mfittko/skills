@@ -14,9 +14,7 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.55",
-    "jsqr": "^1.4.0",
-    "pngjs": "^7.0.0",
-    "qrcode": "^1.5.4"
+    "pngjs": "^7.0.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"
