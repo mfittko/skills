@@ -22,8 +22,10 @@ import { wrapText, capacity, trimToRows } from "../lib/layout.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FONT = path.join(__dirname, "..", "fonts", "RobotoMono-Regular.ttf");
 
+// ponytail: default pointsize 12 — verified best on Kimi K3 (100% fidelity, ~1508 tokens
+// in a flat 384-image-token slot). DeepSeek vision is noisier; see SKILL.md.
 function parseArgs(argv) {
-  const a = { textFile: "", out: "", size: 800, point: 14, font: DEFAULT_FONT, margin: 2 };
+  const a = { textFile: "", out: "", size: 800, point: 12, font: DEFAULT_FONT, margin: 2 };
   for (let i = 2; i < argv.length; i++) {
     switch (argv[i]) {
       case "--text-file": a.textFile = argv[++i]; break;
@@ -39,7 +41,7 @@ function parseArgs(argv) {
   return a;
 }
 
-const HELP = `Usage: render-text-img.mjs --text-file <in.txt> --out <out.png> [--size 800] [--pointsize 14] [--font ttf] [--margin 2]
+const HELP = `Usage: render-text-img.mjs --text-file <in.txt> --out <out.png> [--size 800] [--pointsize 12] [--font ttf] [--margin 2]
 Default font: bundled RobotoMono-Regular.ttf (Apache-2.0).
 `;
 

@@ -21,40 +21,32 @@ NOT for capacity: text is always more token-efficient than an image of text.
 
 ## Token economics
 
-On DeepSeek, an image is a flat **384 input tokens** regardless of how much
-text it carries (the API resizes to ~800×800 before inference). Measured:
+On DeepSeek (and Kimi K3), an image is a flat **384 input tokens** regardless
+of how much text it carries (the API resizes to ~800×800 before inference).
+Measured against Kimi K3 at the recommended pointsize 12 (filled canvas):
 
-| Route (735 tokens of prose) | Billed input tokens |
-|-----------------------------|---------------------|
-| Prompt sent as text | ~800 |
-| Prompt sent as image (800×800) | ~435 (384 img + ~51 text) |
+| Route (~1508 tokens of prose) | Billed input tokens |
+|--------------------------------|---------------------|
+| Prompt sent as text | ~1600 |
+| Prompt sent as image (800×800, p12) | ~435 (384 img + ~51 text) |
 
-So ~735 tokens of content → ~435 billed = **~46% input-token saving**, and the
-image cap is flat so the ratio improves as you pack more (up to the fidelity
-ceiling). Output tokens are unaffected.
+~1508 tokens of content → ~435 billed = **~74% input-token saving on a cold
+request** at 100% fidelity. Output tokens are unaffected.
 
 ### Caching caveat (the saving is mostly first-request only)
 
-DeepSeek (and most providers) cache identical prompt prefixes and bill the
-cached portion at a much lower rate (DeepSeek cacheRead ≈ 1/50th of input).
-This changes the economics:
+Providers cache identical prompt prefixes at a much lower rate (DeepSeek
+cacheRead ≈ 1/50th of input):
 
-- **On a cache hit, both routes are near-free.** A cached 735-token text
-  prefix and a cached 384-token image both bill at cacheRead rates, so the
-  ~46% saving shrinks to negligible.
-- **The saving only matters on the first / uncached request** (cold start, or
-  any time the prefix changed).
-- **Images are all-or-nothing per render.** With text, editing one word near
-  the end of a 735-token prompt leaves the first ~700 tokens cached. With an
-  image, any edit regenerates the whole PNG → all 384 image tokens are a cache
-  miss.
-- **An opaque image block can defeat prefix caching for surrounding text** if
-  the prompt varies between calls, since the image must match byte-for-byte
-  to cache.
+- **On a cache hit, both routes are near-free** — the gap shrinks to negligible.
+- **Images are all-or-nothing per render** — a one-word text edit keeps most of
+  a text prefix cached; the same edit regenerates the whole PNG, so all 384
+  image tokens miss.
+- **An opaque image block can defeat prefix caching** for surrounding text if
+  the prompt varies, since the image must match byte-for-byte to cache.
 
-Net: use this for cold, one-shot, or deliberately obfuscated prompts — not as
-a token optimization in cached multi-turn conversations, where plain text
-prefix caching is strictly better.
+Net: useful for cold / one-shot / obfuscated prompts — strictly worse than
+plain text prefix caching in cached multi-turn conversations.
 
 ## Prereqs
 
@@ -67,56 +59,72 @@ root: `npm install`. Scripts are Node ESM (`.mjs`), called directly.
 | `pngjs` | PNG decode (used in tests) |
 | bundled `fonts/RobotoMono-Regular.ttf` | Default mono font (Apache-2.0) |
 
-A vision-capable model is needed to read the rendered image. This session's
-deepseek provider exposes `deepseek-v4-flash-vision-exp` (add it via
-`~/.pi/agent/models.json` — see below). Other vision models (Kimi K3 on
-fireworks, Claude, GPT) also work.
+A vision-capable model is needed to read the rendered image. **Kimi K3**
+(`fireworks/accounts/fireworks/models/kimi-k3`) is the recommended reader —
+it OCRs rendered text more reliably than `deepseek-v4-flash-vision-exp`
+(100% vs ~90% at matched pointsize). Other vision models (Claude, GPT) also
+work. To add the DeepSeek vision model, see the config block at the bottom.
 
-## Empirical fidelity (2026-08, deepseek-v4-flash-vision-exp)
+## Empirical fidelity (2026-08, Kimi K3 + DeepSeek vision)
 
-**Text-image, 800×800, Roboto Mono pointsize 14**: ~2940 chars (~735 tokens)
-at **~90% char fidelity** typical, occasionally near-perfect (~99%) — OCR is
-non-deterministic run-to-run. Pointsize ≥ 16 or smaller fonts collapse
-fidelity sharply. Code/symbols/identifiers OCR worse than prose.
+**Recommended operating point: Kimi K3, pointsize 12, filled canvas.**
 
-**Resolution ceiling**: DeepSeek and Kimi K3 both resize images to ~800×800
-before inference. Larger canvases do NOT add capacity — they downsample and
-fidelity drops (1600px → ~51% on DeepSeek). 800×800 is the sweet spot.
+| Model | pointsize | fill | chars | ~tokens | fidelity |
+|-------|-----------|------|-------|---------|----------|
+| **Kimi K3** | **12** | **filled** | **6034** | **~1508** | **100% (3/3)** |
+| Kimi K3 | 18 | filled | 1469 | ~367 | 100% (3/3) |
+| Kimi K3 | 14 | half | 2940 | ~735 | ~90–99.98% (noisy) |
+| DeepSeek vision | 14 | half | 2940 | ~735 | ~90% (truncates) |
+| DeepSeek vision | 18 | filled | 1469 | ~367 | ~97–100% |
 
-**Honest bottom line**: the channel is *lossy*. ~90% char fidelity means a
-735-token prompt has ~70 corrupted chars. Fine for prose/system context where
-typos are tolerable; **unsuitable for code, JSON, exact identifiers, or
-anything a single wrong symbol breaks.** For those, send text.
+- **Kimi K3 > DeepSeek** for OCR: Kimi hits 100% at p12 filled; DeepSeek
+  truncates at p14 and is noisier overall.
+- **Resolution ceiling**: both resize images to ~800×800 before inference.
+  Larger canvases do NOT add capacity — they downsample and fidelity drops.
+  800×800 is the sweet spot.
+- **Font choice doesn't matter**: all standard monospace fonts have the same
+  advance width (~0.6em → same capacity) and similar OCR fidelity. Roboto Mono
+  is bundled as a sensible default; `--font` overrides.
+- **No encoding trick helps Latin/code**: base64 is worse (+33% size, high
+  entropy → 0% OCR; the model reads glyphs literally and can't decode
+  reversible encodings). Dense CJK glyphs help *only for CJK prompts* (~4×
+  semantic density per flat image-token) — but needs a CJK font and the prompt
+  must be in CJK.
+- **Even at 100%, this is not for code/JSON/exact identifiers** — those can't
+tolerate any char corruption and gain nothing (at the fidelity code requires,
+the image route costs ≥ the text route). Use for prose / system context /
+  obfuscated transport only.
 
 ## Workflow
 
 1. Write the prompt to a text file.
 
-2. Render:
+2. Render (pointsize 12 is the verified default for Kimi K3):
 
 ```bash
 node <skill-dir>/scripts/render-text-img.mjs \
   --text-file prompt.txt --out tmp/image-prompt/prompt.png \
-  --size 800 --pointsize 14
+  --size 800 --pointsize 12
 ```
 
 3. Send to a vision model. If the parent model supports images, `read` the
    PNG and act on the transcribed prompt. Otherwise launch a subagent with a
-   vision model:
+   vision model (Kimi K3 recommended):
 
 ```
-subagent agent=worker model=<vision-model-id> task="Read the image at /path/prompt.png. Transcribe all text exactly, then carry out what the transcribed text says."
+subagent agent=worker model=fireworks/accounts/fireworks/models/kimi-k3 task="Read the image at /path/prompt.png. Transcribe all text exactly, then carry out what the transcribed text says."
 ```
 
 4. On Telegram, `telegram_attach` the PNG if the user wants to see it.
 
 ## Tuning knobs
 
-- `--pointsize 14` is the reliable default on 800×800. Higher = fewer chars but
-  marginally better OCR; lower collapses OCR.
+- `--pointsize 12` is the verified default (Kimi K3, 100% fidelity, ~1508
+  tokens). Lower fits more but drops fidelity; higher is more reliable but
+  less capacity.
 - `--size 800` matches the model's internal resize. Going larger is pointless.
-- `--font <path>` overrides the bundled Roboto Mono (try others for your
-  model; fidelity is font-dependent).
+- `--font <path>` overrides the bundled Roboto Mono (font choice barely moves
+  fidelity; all standard monospace fonts are equivalent here).
 - Lines are word-wrapped to column width automatically; long tokens are
   hard-broken for max packing.
 
