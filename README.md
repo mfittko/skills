@@ -65,6 +65,18 @@ npx playwright install chromium
 
 The skill works without Telegram — it can generate `.ogg`/`.m4a` files locally using macOS `say` + `ffmpeg` as a fallback.
 
+### image-prompt
+
+| Dependency | Purpose |
+|----------|---------|
+| [`@napi-rs/canvas`](https://www.npmjs.com/package/@napi-rs/canvas) | Render prompt text into a PNG (prebuilt binaries, OS-independent) |
+| `pngjs` | PNG decode (used in tests) |
+| A vision-capable model | Reads the rendered image (e.g. `deepseek-v4-flash-vision-exp`) |
+
+```bash
+npm install
+```
+
 ### deslop
 
 No external dependencies. Works with any Pi session. The skill is self-contained — load it for any writing, editing, or review task.
@@ -98,6 +110,16 @@ Generate spoken replies and audio artifacts. Supports native Telegram voice-note
 Triggers: "audio", "voice summary", "voice note", "spoken version", "read this aloud"
 
 See [audio-note/SKILL.md](audio-note/SKILL.md) for the full workflow.
+
+### image-prompt
+
+Render a text prompt into an image and send it to a vision-capable model so the model reads the prompt from pixels instead of receiving it as text. Useful for obfuscation / steganographic prompt transport.
+
+Text-image mode on 800×800 at pointsize 14 carries ~2940 chars (~735 tokens) at ~90% OCR fidelity (noisy). The prompt is absent from the request body as text — only pixels.
+
+Triggers: "image prompt", "pixel prompt", "send prompt via image", "encode prompt as pixels"
+
+See [image-prompt/SKILL.md](image-prompt/SKILL.md) for the full workflow, token economics, and empirical limits.
 
 ## Usage
 
