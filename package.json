@@ -1,7 +1,7 @@
 {
   "name": "@mfittko/pi-skills",
   "version": "1.0.0",
-  "description": "Pi agent skills: presentation-builder, deslop, and audio-note",
+  "description": "Pi agent skills: presentation-builder, deslop, audio-note, and image-prompt",
   "keywords": ["pi-package"],
   "repository": {
     "type": "git",
@@ -9,11 +9,24 @@
   },
   "author": "mfittko",
   "license": "MIT",
+  "scripts": {
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.55",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
   "pi": {
     "skills": [
       "presentation-builder",
       "deslop",
-      "audio-note"
+      "audio-note",
+      "image-prompt"
     ]
   }
 }

@@ -11,11 +11,10 @@ it. The prompt text is NOT sent as text in the request body — only as pixels.
 
 Two modes:
 
-1. **Text-image (works)** — render the prompt as printed text in a PNG. Vision
-   models OCR this near-perfectly. This is the reliable channel.
-2. **QR code (novelty, does not work)** — render the prompt as a QR code.
-   Vision models cannot decode QR from pixels and hallucinate plausible text.
-   Kept as a robustness probe only.
+1. **Text-image (works, lossy)** — render the prompt as printed text in a PNG.
+   Vision models OCR this. Useful for obfuscation / steganographic transport.
+2. **QR code (novelty, does not work)** — vision models cannot decode QR from
+   pixels and hallucinate plausible text. Kept as a robustness probe.
 
 ## When to apply
 
@@ -28,32 +27,59 @@ Two modes:
 ## Why
 
 The prompt is absent from the request body as text — it exists only as image
-pixels. This is useful for obfuscation / steganography / robustness probing,
-not for capacity (text is always more token-efficient than an image of text).
+pixels. Useful for obfuscation / steganography / robustness probing, NOT for
+capacity: text is always more token-efficient than an image of text.
+
+## Token economics
+
+On DeepSeek, an image is a flat **384 input tokens** regardless of how much
+text it carries (the API resizes to ~800×800 before inference). Measured:
+
+| Route (735 tokens of prose) | Billed input tokens |
+|-----------------------------|---------------------|
+| Prompt sent as text | ~800 |
+| Prompt sent as image (800×800) | ~435 (384 img + ~51 text) |
+
+So ~735 tokens of content → ~435 billed = **~46% input-token saving**, and the
+image cap is flat so the ratio improves as you pack more (up to the fidelity
+ceiling). Output tokens are unaffected.
 
 ## Prereqs
 
-- `qrencode` (QR render): `brew install qrencode`
-- `zbar` (QR decode / local verify): `brew install zbar`
-- ImageMagick (text render): `brew install imagemagick`
-- A vision-capable model. This session's deepseek provider has
-  `deepseek-v4-flash-vision-exp` available (image input). Other vision models
-  (Kimi K3 on fireworks, Claude, GPT) also work.
+All deps are npm packages (no system tools required). Install at the repo
+root: `npm install`. Scripts are Node ESM (`.mjs`), called directly.
 
-## Empirical limits (2026-08)
+| Dependency | Purpose |
+|------------|---------|
+| `@napi-rs/canvas` | Text → PNG rasterization (prebuilt binaries, OS-independent) |
+| `qrcode` | QR PNG generation (pure JS) |
+| `pngjs` + `jsqr` | QR decode / local verify (pure JS) |
+| bundled `fonts/RobotoMono-Regular.ttf` | Default mono font (Apache-2.0) |
 
-Tested against `deepseek-v4-flash-vision-exp` and `kimi-k3`:
+A vision-capable model is needed to read the rendered image. This session's
+deepseek provider exposes `deepseek-v4-flash-vision-exp` (add it via
+`~/.pi/agent/models.json` — see below). Other vision models (Kimi K3 on
+fireworks, Claude, GPT) also work.
 
-- **Text-image, 800×800, pointsize 14, Andale Mono**: ~2940 chars (~735
-  tokens) at **99.98% fidelity**; ~3600 chars (~900 tokens) at ~87%.
-- **Resolution ceiling**: both DeepSeek and Kimi K3 resize images to ~800×800
-  before inference. Larger canvases do NOT add capacity — they get downsampled
-  and fidelity drops (1600px → ~51% on DeepSeek). 800×800 is the sweet spot.
-- **Smaller fonts collapse past pointsize 12**: point 10 → ~38%, point 8 →
-  ~27%. The vision encoder cannot resolve the glyphs.
-- **QR codes**: ~0% fidelity regardless of size, density, or error correction.
-  The model returns plausible-looking but wrong text (e.g. `HELLO` →
-  `Hello, World!`). Do not use QR as a prompt transport.
+## Empirical fidelity (2026-08, deepseek-v4-flash-vision-exp)
+
+**Text-image, 800×800, Roboto Mono pointsize 14**: ~2940 chars (~735 tokens)
+at **~90% char fidelity** typical, occasionally near-perfect (~99%) — OCR is
+non-deterministic run-to-run. Pointsize ≥ 16 or smaller fonts collapse
+fidelity sharply. Code/symbols/identifiers OCR worse than prose.
+
+**Resolution ceiling**: DeepSeek and Kimi K3 both resize images to ~800×800
+before inference. Larger canvases do NOT add capacity — they downsample and
+fidelity drops (1600px → ~51% on DeepSeek). 800×800 is the sweet spot.
+
+**QR codes**: ~0% fidelity regardless of size/density/error-correction. The
+model returns plausible-looking but wrong text (`HELLO` → `Hello, World!`).
+Do not use QR as a prompt transport.
+
+**Honest bottom line**: the text-image channel is *lossy*. ~90% char fidelity
+means a 735-token prompt has ~70 corrupted chars. Fine for prose/system
+context where typos are tolerable; **unsuitable for code, JSON, exact
+identifiers, or anything a single wrong symbol breaks.** For those, send text.
 
 ## Workflow
 
@@ -64,7 +90,9 @@ Tested against `deepseek-v4-flash-vision-exp` and `kimi-k3`:
 2. Render:
 
 ```bash
-bash <skill-dir>/scripts/render-text-img.sh --text-file prompt.txt --out tmp/image-prompt/prompt.png --pointsize 14 --size 800
+node <skill-dir>/scripts/render-text-img.mjs \
+  --text-file prompt.txt --out tmp/image-prompt/prompt.png \
+  --size 800 --pointsize 14
 ```
 
 3. Send to a vision model. If the parent model supports images, `read` the
@@ -80,21 +108,54 @@ subagent agent=worker model=<vision-model-id> task="Read the image at /path/prom
 ### QR mode (novelty only — expect failure)
 
 ```bash
-bash <skill-dir>/scripts/render-qr.sh --text "short prompt" --out tmp/image-prompt/qr.png --size 12
-bash <skill-dir>/scripts/decode-qr.sh tmp/image-prompt/qr.png   # local verify only
+node <skill-dir>/scripts/render-qr.mjs --text "short prompt" --out tmp/image-prompt/qr.png
+node <skill-dir>/scripts/decode-qr.mjs tmp/image-prompt/qr.png   # local verify only
 ```
 
 ## Tuning knobs
 
-- `--pointsize 14` is the reliable maximum on 800×800. Drop to 12 only if you
-  need ~600 more chars and can accept ~92% fidelity.
+- `--pointsize 14` is the reliable default on 800×800. Higher = fewer chars but
+  marginally better OCR; lower collapses OCR.
 - `--size 800` matches the model's internal resize. Going larger is pointless.
-- Long lines are word-wrapped to column width automatically.
+- `--font <path>` overrides the bundled Roboto Mono (try others for your
+  model; fidelity is font-dependent).
+- Lines are word-wrapped to column width automatically; long tokens are
+  hard-broken for max packing.
 
-## Scripts
+## Scripts (OS-independent Node ESM)
 
-- `scripts/render-text-img.sh` — text file → PNG canvas (ImageMagick). The
-  working channel.
-- `scripts/render-qr.sh` — text/file → QR PNG (`qrencode`). Novelty.
-- `scripts/decode-qr.sh` — PNG → text (`zbarimg`). Local QR verification only;
-  never rely on the model for this.
+- `scripts/render-text-img.mjs` — text file → PNG (`@napi-rs/canvas`). Exported
+  `renderTextImage()` for programmatic use + tests.
+- `scripts/render-qr.mjs` — text/file → QR PNG (`qrcode`). Exported
+  `renderQr()`.
+- `scripts/decode-qr.mjs` — PNG → text (`pngjs` + `jsqr`). Exported
+  `decodeQr()`.
+- `lib/layout.mjs` — pure `wrapText` / `capacity` / `trimToRows` helpers.
+
+## Tests
+
+`npm test` (Jest). Covers: text wrapping edge cases, capacity calc, QR
+render→decode round-trip (ascii + unicode + file), and text-image output
+dimensions + non-blank.
+
+## Adding the DeepSeek vision model
+
+Merge into `~/.pi/agent/models.json` (uses existing deepseek auth):
+
+```json
+{
+  "providers": {
+    "deepseek": {
+      "models": [
+        {
+          "id": "deepseek-v4-flash-vision-exp",
+          "name": "DeepSeek V4 Flash Vision Exp",
+          "input": ["text", "image"],
+          "contextWindow": 256000,
+          "maxTokens": 32000
+        }
+      ]
+    }
+  }
+}
+```
