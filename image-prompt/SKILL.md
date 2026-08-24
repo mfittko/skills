@@ -97,6 +97,15 @@ subagent agent=worker model=<vision-model-id> task="Read the image at /path/prom
 - Lines are word-wrapped to column width automatically; long tokens are
   hard-broken for max packing.
 
+## Why no QR?
+
+A QR-code mode was tried and removed: vision models cannot decode QR from
+pixels (~0% fidelity regardless of size/density/error-correction) and
+hallucinate plausible-looking text. Local `zbarimg` decoded the same images
+perfectly, confirming the failure is the vision model, not the QR. The
+printed-text channel works because models OCR glyphs reliably; QR grid
+patterns are not something they can parse. Do not re-add QR as a transport.
+
 ## Scripts (OS-independent Node ESM)
 
 - `scripts/render-text-img.mjs` — text file → PNG (`@napi-rs/canvas`). Exported

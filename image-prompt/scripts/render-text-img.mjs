@@ -15,6 +15,10 @@ import { fileURLToPath } from "node:url";
 import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { wrapText, capacity, trimToRows } from "../lib/layout.mjs";
 
+// ponytail: a QR-code mode was tried here and removed — vision models cannot
+// decode QR from pixels (~0% fidelity, they hallucinate). Printed text works
+// because models OCR glyphs. Don't re-add QR as a transport.
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FONT = path.join(__dirname, "..", "fonts", "RobotoMono-Regular.ttf");
 
